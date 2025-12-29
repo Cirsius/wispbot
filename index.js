@@ -73,11 +73,28 @@ function checkWisp(url) {
     });
 }
 
+async function getLocation(url) {
+    try {
+        let host = new URL(url).hostname;
+        let res = await fetch(`http://ip-api.com/json/${host}`);
+        let data = await res.json();
+        if (data.status === 'success') return `${data.countryCode}, ${data.city}`;
+    } catch (e) { }
+    return null;
+}
+
 function createEmbed() {
+    let desc = 'no servers yet';
+    if (servers.length > 0) {
+        desc = servers.map(s => {
+            if (typeof s === 'string') return s;
+            return s.location ? `${s.url} (${s.location})` : s.url;
+        }).join('\n');
+    }
     const embed = new EmbedBuilder()
         .setTitle('wisp servers')
         .setColor('#5865F2')
-        .setDescription(servers.length > 0 ? servers.join('\n') : 'no servers yet')
+        .setDescription(desc)
         .setFooter({ text: 'usage: !addwisp <url>' });
     return { embeds: [embed] };
 }
@@ -105,18 +122,27 @@ async function updateEmbed() {
 
 async function recheckServers() {
     let removed = [];
+    let updated = false;
     for (let i = servers.length - 1; i >= 0; i--) {
-        const result = await checkWisp(servers[i]);
+        let s = servers[i];
+        let url = typeof s === 'string' ? s : s.url;
+        const result = await checkWisp(url);
         if (result === false) {
-            removed.push(servers[i]);
+            removed.push(url);
             servers.splice(i, 1);
+        } else {
+            if (typeof s === 'string' || !s.location || !s.location.includes(',')) {
+                let loc = await getLocation(url);
+                servers[i] = { url: url, location: loc };
+                updated = true;
+            }
         }
     }
-    if (removed.length > 0) {
+    if (removed.length > 0 || updated) {
         fs.writeFileSync('./servers.json', JSON.stringify(servers, null, 2));
         await updateEmbed();
-        console.log(`removed dead servers: ${removed.join(', ')}`);
     }
+    if (removed.length > 0) console.log(`removed dead servers: ${removed.join(', ')}`);
 }
 
 client.once('clientReady', async () => {
@@ -138,7 +164,7 @@ client.on('messageCreate', async message => {
             await message.reply('usage: !addwisp <url>');
             return;
         }
-        if (servers.includes(url)) {
+        if (servers.some(s => (typeof s === 'string' ? s : s.url) === url)) {
             await message.reply('already in list');
             return;
         }
@@ -146,7 +172,8 @@ client.on('messageCreate', async message => {
         await message.reply('checking');
         const result = await checkWisp(url);
         if (result !== false) {
-            servers.push(url);
+            let loc = await getLocation(url);
+            servers.push({ url: url, location: loc });
             fs.writeFileSync('./servers.json', JSON.stringify(servers, null, 2));
             await updateEmbed();
             await message.reply(`added (${result}ms)`);
@@ -162,7 +189,7 @@ client.on('messageCreate', async message => {
             await message.reply('usage: !removewisp <url>');
             return;
         }
-        const index = servers.indexOf(url);
+        const index = servers.findIndex(s => (typeof s === 'string' ? s : s.url) === url);
         if (index === -1) {
             await message.reply('not in list');
             return;
