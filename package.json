@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@mercuryworkshop/wisp-js": "^0.4.1",
-    "discord.js": "^14.25.1"
+    "discord.js": "^14.25.1",
+    "hono": "^4.11.3"
   }
 }

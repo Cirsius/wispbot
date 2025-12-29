@@ -182,3 +182,10 @@ client.on('messageCreate', async message => {
 });
 
 client.login(config.token);
+const { Hono } = require('hono');
+const app = new Hono();
+
+app.get('/api/servers', (c) => c.json(servers));
+
+Bun.serve({ port: 6741, fetch: app.fetch });
+console.log('api running on http://localhost:6741');
