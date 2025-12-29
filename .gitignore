@@ -1,0 +1,4 @@
+node_modules
+bot-config.json
+servers.json
+bun.lock
