@@ -121,24 +121,29 @@ async function updateEmbed() {
 }
 
 async function recheckServers() {
-    let removed = [];
-    let updated = false;
-    for (let i = servers.length - 1; i >= 0; i--) {
-        let s = servers[i];
+    let results = await Promise.all(servers.map(async (s) => {
         let url = typeof s === 'string' ? s : s.url;
-        const result = await checkWisp(url);
-        if (result === false) {
-            removed.push(url);
-            servers.splice(i, 1);
+        let alive = await checkWisp(url);
+        let loc = s.location;
+        if (alive !== false && (typeof s === 'string' || !s.location || !s.location.includes(','))) {
+            loc = await getLocation(url);
+        }
+        return { url, alive: alive !== false, location: loc };
+    }));
+
+    let removed = [];
+    let newServers = [];
+    for (let r of results) {
+        if (r.alive) {
+            newServers.push({ url: r.url, location: r.location });
         } else {
-            if (typeof s === 'string' || !s.location || !s.location.includes(',')) {
-                let loc = await getLocation(url);
-                servers[i] = { url: url, location: loc };
-                updated = true;
-            }
+            removed.push(r.url);
         }
     }
-    if (removed.length > 0 || updated) {
+
+    if (removed.length > 0 || JSON.stringify(servers) !== JSON.stringify(newServers)) {
+        servers.length = 0;
+        servers.push(...newServers);
         fs.writeFileSync('./servers.json', JSON.stringify(servers, null, 2));
         await updateEmbed();
     }
