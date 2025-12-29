@@ -8,6 +8,7 @@ uses wisp-js to attempt a connection to the server. if the wisp handshake comple
 - !addwisp - adds a wisp server to the list (anyone can use)
 - !removewisp - removes a wisp server (owner only)
 - !setchannel - sets the channel where the list will be posted (owner only)
+- !removechannel - removes the channel where the list is posted (owner only)
 
 ### prerequisites
 - bun

@@ -4,13 +4,14 @@ const fs = require('fs');
 
 function loadConfig() {
     if (fs.existsSync('./bot-config.json')) {
-        return JSON.parse(fs.readFileSync('./bot-config.json', 'utf8'));
+        let cfg = JSON.parse(fs.readFileSync('./bot-config.json', 'utf8'));
+        if (!cfg.channels) cfg.channels = [];
+        return cfg;
     }
     const defaultConfig = {
         token: 'bot token',
         ownerId: 'ur user id',
-        channelId: null,
-        embedMessageId: null
+        channels: []
     };
     fs.writeFileSync('./bot-config.json', JSON.stringify(defaultConfig, null, 2));
     return defaultConfig;
@@ -82,23 +83,23 @@ function createEmbed() {
 }
 
 async function updateEmbed() {
-    if (!config.channelId) return;
-    const channel = client.channels.cache.get(config.channelId);
-    if (!channel) return;
-
-    if (config.embedMessageId) {
-        try {
-            const msg = await channel.messages.fetch(config.embedMessageId);
-            await msg.edit(createEmbed());
-        } catch (e) {
-            const msg = await channel.send(createEmbed());
-            config.embedMessageId = msg.id;
+    for (let ch of config.channels) {
+        let channel = client.channels.cache.get(ch.id);
+        if (!channel) continue;
+        if (ch.msgId) {
+            try {
+                let msg = await channel.messages.fetch(ch.msgId);
+                await msg.edit(createEmbed());
+            } catch (e) {
+                let msg = await channel.send(createEmbed());
+                ch.msgId = msg.id;
+                fs.writeFileSync('./bot-config.json', JSON.stringify(config, null, 2));
+            }
+        } else {
+            let msg = await channel.send(createEmbed());
+            ch.msgId = msg.id;
             fs.writeFileSync('./bot-config.json', JSON.stringify(config, null, 2));
         }
-    } else {
-        const msg = await channel.send(createEmbed());
-        config.embedMessageId = msg.id;
-        fs.writeFileSync('./bot-config.json', JSON.stringify(config, null, 2));
     }
 }
 
@@ -174,10 +175,26 @@ client.on('messageCreate', async message => {
 
     if (command === '!setchannel') {
         if (message.author.id !== config.ownerId) return;
-        config.channelId = message.channel.id;
-        config.embedMessageId = null;
+        let exists = config.channels.find(c => c.id === message.channel.id);
+        if (exists) {
+            await message.reply('already set');
+            return;
+        }
+        config.channels.push({ id: message.channel.id, msgId: null });
         fs.writeFileSync('./bot-config.json', JSON.stringify(config, null, 2));
         await updateEmbed();
+    }
+
+    if (command === '!removechannel') {
+        if (message.author.id !== config.ownerId) return;
+        let idx = config.channels.findIndex(c => c.id === message.channel.id);
+        if (idx === -1) {
+            await message.reply('not set');
+            return;
+        }
+        config.channels.splice(idx, 1);
+        fs.writeFileSync('./bot-config.json', JSON.stringify(config, null, 2));
+        await message.reply('removed');
     }
 });
 
