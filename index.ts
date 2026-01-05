@@ -1,14 +1,27 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { client: wisp } = require('@mercuryworkshop/wisp-js/client');
-const fs = require('fs');
+import { Client, GatewayIntentBits, EmbedBuilder, TextChannel, Message } from 'discord.js';
+import { client as wisp } from '@mercuryworkshop/wisp-js/client';
+import { server as wispServer } from '@mercuryworkshop/wisp-js/server';
+import fs from 'fs';
+import { Hono } from 'hono';
 
-function loadConfig() {
+interface BotConfig {
+    token: string;
+    ownerId: string;
+    channels: { id: string; msgId: string | null }[];
+}
+
+interface ServerEntry {
+    url: string;
+    location?: string | null;
+}
+
+function loadConfig(): BotConfig {
     if (fs.existsSync('./bot-config.json')) {
         let cfg = JSON.parse(fs.readFileSync('./bot-config.json', 'utf8'));
         if (!cfg.channels) cfg.channels = [];
         return cfg;
     }
-    const defaultConfig = {
+    const defaultConfig: BotConfig = {
         token: 'bot token',
         ownerId: 'ur user id',
         channels: []
@@ -17,7 +30,7 @@ function loadConfig() {
     return defaultConfig;
 }
 
-function loadServers() {
+function loadServers(): ServerEntry[] {
     if (fs.existsSync('./servers.json')) {
         return JSON.parse(fs.readFileSync('./servers.json', 'utf8'));
     }
@@ -35,7 +48,7 @@ const client = new Client({
     ]
 });
 
-function checkWisp(url) {
+function checkWisp(url: string): Promise<number | false> {
     return new Promise((resolve) => {
         let done = false;
         let start = Date.now();
@@ -73,11 +86,11 @@ function checkWisp(url) {
     });
 }
 
-async function getLocation(url) {
+async function getLocation(url: string): Promise<string | null> {
     try {
         let host = new URL(url).hostname;
         let res = await fetch(`http://ip-api.com/json/${host}`);
-        let data = await res.json();
+        let data = await res.json() as { status: string; countryCode: string; city: string };
         if (data.status === 'success') return `${data.countryCode}, ${data.city}`;
     } catch (e) { }
     return null;
@@ -101,7 +114,7 @@ function createEmbed() {
 
 async function updateEmbed() {
     for (let ch of config.channels) {
-        let channel = client.channels.cache.get(ch.id);
+        let channel = client.channels.cache.get(ch.id) as TextChannel | undefined;
         if (!channel) continue;
         if (ch.msgId) {
             try {
@@ -124,15 +137,15 @@ async function recheckServers() {
     let results = await Promise.all(servers.map(async (s) => {
         let url = typeof s === 'string' ? s : s.url;
         let alive = await checkWisp(url);
-        let loc = s.location;
+        let loc = (s as ServerEntry).location;
         if (alive !== false && (typeof s === 'string' || !s.location || !s.location.includes(','))) {
             loc = await getLocation(url);
         }
         return { url, alive: alive !== false, location: loc };
     }));
 
-    let removed = [];
-    let newServers = [];
+    let removed: string[] = [];
+    let newServers: ServerEntry[] = [];
     for (let r of results) {
         if (r.alive) {
             newServers.push({ url: r.url, location: r.location });
@@ -151,13 +164,13 @@ async function recheckServers() {
 }
 
 client.once('clientReady', async () => {
-    console.log(`logged in as ${client.user.tag}`);
+    console.log(`logged in as ${client.user?.tag}`);
     await updateEmbed();
     await recheckServers();
     setInterval(recheckServers, 24 * 60 * 60 * 1000);
 });
 
-client.on('messageCreate', async message => {
+client.on('messageCreate', async (message: Message) => {
     if (message.author.bot) return;
 
     const args = message.content.split(' ');
@@ -231,14 +244,12 @@ client.on('messageCreate', async message => {
 });
 
 client.login(config.token);
-const { Hono } = require('hono');
-const { server: { ServerConnection } } = require('@mercuryworkshop/wisp-js/server');
 
 const app = new Hono();
 
 app.get('/api/servers', (c) => c.json(servers));
 
-let conns = new Map();
+let conns = new Map<any, any>();
 
 Bun.serve({
     port: 6741,
@@ -248,9 +259,9 @@ Bun.serve({
     },
     websocket: {
         open(ws) {
-            let a = { readyState: 1, OPEN: 1, bufferedAmount: 0, send: d => ws.sendBinary(d), close: () => ws.close(), ping: () => ws.ping() };
+            let a: any = { readyState: 1, OPEN: 1, bufferedAmount: 0, send: (d: any) => ws.sendBinary(d), close: () => ws.close(), ping: () => ws.ping() };
             conns.set(ws, a);
-            let c = new ServerConnection(a, '/', { ping_interval: 30 });
+            let c = new wispServer.ServerConnection(a, '/', { ping_interval: 30 });
             c.setup().then(() => c.run()).catch(() => ws.close());
         },
         message(ws, data) { conns.get(ws)?.onmessage?.({ data }); },
