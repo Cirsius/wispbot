@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
   "dependencies": {
     "@mercuryworkshop/wisp-js": "^0.4.1",
     "discord.js": "^14.25.1",
